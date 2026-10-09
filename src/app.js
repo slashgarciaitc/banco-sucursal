@@ -9,6 +9,11 @@ app.use(logger);
 app.use(express.json());
 app.use(express.static('public'));
 
+// en vercel express.static no se usa y los archivos de public/ los sirve su cdn
+app.get('/', (req, res) => {
+  res.redirect('/index.html');
+});
+
 app.use('/api', sucursalRoutes);
 
 app.use(noEncontrado);
