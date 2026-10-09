@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sucursal</title>
+  <link rel="stylesheet" href="/estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <div>
+      <p class="marca">Banco Central</p>
+      <h1 id="nombre-sucursal">Sucursal</h1>
+    </div>
+    <div id="sesion" hidden>
+      <span id="usuario"></span>
+      <button id="btn-salir">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="vista-login" class="tarjeta login">
+      <h2>Iniciar sesión</h2>
+      <form id="form-login">
+        <label>Correo <input id="email" type="email" required></label>
+        <label>Contraseña <input id="password" type="password" required></label>
+        <button class="primario">Entrar</button>
+      </form>
+      <p class="error" id="error-login"></p>
+    </section>
+
+    <div id="vista-panel" hidden>
+      <section class="resumen">
+        <div class="tarjeta"><p class="etiqueta">Efectivo en sucursal</p><p class="cifra" id="efectivo"></p></div>
+        <div class="tarjeta"><p class="etiqueta">Cuentas abiertas aquí</p><p class="cifra" id="cuentas-abiertas"></p></div>
+        <div class="tarjeta"><p class="etiqueta">Depósitos</p><p class="cifra" id="total-depositos"></p></div>
+        <div class="tarjeta"><p class="etiqueta">Retiros</p><p class="cifra" id="total-retiros"></p></div>
+      </section>
+
+      <div class="columnas">
+        <section class="tarjeta">
+          <h2>Abrir cuenta</h2>
+          <form id="form-cuenta">
+            <label>Nombre del titular <input id="titular" required></label>
+            <label>Saldo inicial <input id="saldo-inicial" type="number" min="0" step="0.01" value="0"></label>
+            <button class="primario">Crear cuenta</button>
+          </form>
+          <p id="mensaje-cuenta"></p>
+        </section>
+
+        <section class="tarjeta">
+          <h2>Buscar cliente</h2>
+          <form id="form-buscar" class="fila">
+            <input id="buscar-cuenta" inputmode="numeric" placeholder="Número de cuenta" required>
+            <button>Buscar</button>
+          </form>
+          <div id="cliente"></div>
+        </section>
+      </div>
+
+      <section class="tarjeta">
+        <h2 id="titulo-historial">Operaciones de la sucursal</h2>
+        <button id="btn-historial-local" hidden>Ver operaciones de la sucursal</button>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr><th>Folio</th><th>Fecha</th><th>Tipo</th><th>Origen</th><th>Destino</th><th>Monto</th></tr></thead>
+            <tbody id="historial"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const pesos = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
+    async function api(metodo, url, cuerpo) {
+      const res = await fetch(url, {
+        method: metodo,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + (sessionStorage.getItem('token') ?? ''),
+        },
+        body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+      });
+      const datos = await res.json();
+      if (res.status === 401 && url !== '/api/login') salir();
+      if (!res.ok) throw new Error(datos.error);
+      return datos;
+    }
+
+    function salir() {
+      sessionStorage.clear();
+      $('vista-panel').hidden = true;
+      $('sesion').hidden = true;
+      $('vista-login').hidden = false;
+    }
+
+    $('form-login').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const datos = await api('POST', '/api/login', { email: $('email').value, password: $('password').value });
+        sessionStorage.setItem('token', datos.token);
+        sessionStorage.setItem('email', datos.email);
+        $('password').value = '';
+        $('error-login').textContent = '';
+        entrar();
+      } catch (err) {
+        $('error-login').textContent = err.message;
+      }
+    });
+
+    $('btn-salir').addEventListener('click', salir);
+
+    async function entrar() {
+      $('vista-login').hidden = true;
+      $('vista-panel').hidden = false;
+      $('sesion').hidden = false;
+      $('usuario').textContent = sessionStorage.getItem('email');
+      const sucursal = await api('GET', '/api/sucursal');
+      $('nombre-sucursal').textContent = sucursal.nombre;
+      cargarReporte();
+      cargarHistorial();
+    }
+
+    async function cargarReporte() {
+      const reporte = await api('GET', '/api/reporte');
+      const total = (tipo) => reporte.operaciones.find((o) => o.tipo === tipo)?.total ?? 0;
+      $('efectivo').textContent = pesos.format(reporte.efectivo);
+      $('cuentas-abiertas').textContent = reporte.cuentas_abiertas;
+      $('total-depositos').textContent = pesos.format(total('deposito'));
+      $('total-retiros').textContent = pesos.format(total('retiro'));
+    }
+
+    async function cargarHistorial(cuenta) {
+      const lista = await api('GET', cuenta ? `/api/historial/${cuenta}` : '/api/historial');
+      $('titulo-historial').textContent = cuenta ? `Movimientos de la cuenta ${cuenta}` : 'Operaciones de la sucursal';
+      $('btn-historial-local').hidden = !cuenta;
+      $('historial').innerHTML = '';
+      for (const t of lista) {
+        const fila = $('historial').insertRow();
+        const valores = [t.id, new Date(t.created_at).toLocaleString('es-MX'), t.tipo,
+          t.cuenta_origen ?? '-', t.cuenta_destino ?? '-', pesos.format(t.monto)];
+        for (const valor of valores) fila.insertCell().textContent = valor;
+      }
+      if (!lista.length) $('historial').insertRow().insertCell().textContent = 'Sin movimientos';
+    }
+
+    $('btn-historial-local').addEventListener('click', () => cargarHistorial());
+
+    $('form-cuenta').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const cuenta = await api('POST', '/api/cuentas', {
+          titular: $('titular').value,
+          saldo_inicial: Number($('saldo-inicial').value),
+        });
+        $('mensaje-cuenta').textContent =
+          `Cuenta ${cuenta.numero_cuenta} creada para ${cuenta.titular} con ${pesos.format(cuenta.saldo)}.`;
+        $('form-cuenta').reset();
+        cargarReporte();
+        cargarHistorial();
+      } catch (err) {
+        $('mensaje-cuenta').textContent = err.message;
+      }
+    });
+
+    $('form-buscar').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const numero = $('buscar-cuenta').value.trim();
+      try {
+        const cuenta = await api('GET', `/api/cuentas/${numero}`);
+        $('cliente').innerHTML = '<p><strong></strong></p><p></p>';
+        $('cliente').querySelector('strong').textContent = cuenta.titular;
+        $('cliente').lastChild.textContent =
+          `Cuenta ${cuenta.numero_cuenta} · Saldo ${pesos.format(cuenta.saldo)} · ${cuenta.estado}`;
+        cargarHistorial(numero);
+      } catch (err) {
+        $('cliente').textContent = err.message;
+      }
+    });
+
+    if (sessionStorage.getItem('token')) entrar();
+  </script>
+</body>
+</html>

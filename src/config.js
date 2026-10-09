@@ -1,0 +1,6 @@
+export const config = {
+  puerto: process.env.PORT ?? 3001,
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+  apiKey: process.env.API_KEY_SUCURSAL,
+};

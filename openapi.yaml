@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: API de la sucursal
+  version: 1.0.0
+  description: >
+    Nodo sucursal del sistema bancario. Los ejecutivos inician sesión con
+    Supabase Auth. La sucursal se comunica con el Banco Central usando su API key
+    para abrir cuentas, consultar historiales y sacar reportes.
+servers:
+  - url: http://localhost:3001
+
+security:
+  - bearer: []
+
+paths:
+  /api/login:
+    post:
+      summary: Iniciar sesión (Supabase Auth)
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: { email: ejecutivo@banco.test, password: '********' }
+      responses:
+        '200':
+          description: Token de sesión
+          content:
+            application/json:
+              example: { token: eyJhbGciOi..., email: ejecutivo@banco.test }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/sucursal:
+    get:
+      summary: Datos de la sucursal
+      operationId: sucursal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example: { id: 1, tipo: sucursal, nombre: Sucursal Centro, responsable: Ejecutivo, efectivo: 50000 }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/cuentas:
+    post:
+      summary: Abrir una cuenta
+      operationId: crearCuenta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [titular]
+              properties:
+                titular: { type: string }
+                saldo_inicial: { type: number, default: 0 }
+            example: { titular: Cliente Demo, saldo_inicial: 1000 }
+      responses:
+        '201':
+          description: Cuenta creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cuenta' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/cuentas/{cuenta}:
+    get:
+      summary: Consultar una cuenta
+      operationId: consultarCuenta
+      parameters:
+        - $ref: '#/components/parameters/Cuenta'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cuenta' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/historial:
+    get:
+      summary: Operaciones hechas en esta sucursal
+      operationId: historialSucursal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaccion' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/historial/{cuenta}:
+    get:
+      summary: Movimientos de un cliente
+      operationId: historialCuenta
+      parameters:
+        - $ref: '#/components/parameters/Cuenta'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Transaccion' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /api/reporte:
+    get:
+      summary: Reporte de operaciones de la sucursal
+      operationId: reporte
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                nodo: Sucursal Centro
+                efectivo: 51000
+                cuentas_abiertas: 1
+                operaciones: [{ tipo: deposito, cantidad: 1, total: 1000 }]
+        '401': { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+
+  parameters:
+    Cuenta:
+      name: cuenta
+      in: path
+      required: true
+      schema: { type: string, example: '4000000001' }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+
+  schemas:
+    Cuenta:
+      type: object
+      properties:
+        numero_cuenta: { type: string, example: '4000000001' }
+        titular: { type: string, example: Cliente Demo }
+        saldo: { type: number, example: 1000 }
+        estado: { type: string, enum: [activa, bloqueada] }
+
+    Transaccion:
+      type: object
+      properties:
+        id: { type: integer }
+        cuenta_origen: { type: string, nullable: true }
+        cuenta_destino: { type: string, nullable: true }
+        monto: { type: number }
+        tipo: { type: string, enum: [retiro, deposito, transferencia] }
+        nodo_id: { type: integer }
+        created_at: { type: string, format: date-time }
